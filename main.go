@@ -10,36 +10,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 //go:embed images/*.png
 var embeddedImages embed.FS
 
-func createMemFile(name string, data []byte) (*os.File, error) {
-	fd, err := unix.MemfdCreate(name, unix.MFD_CLOEXEC)
-	if err != nil {
-		return nil, fmt.Errorf("memfd_create failed: %w", err)
-	}
-
-	file := os.NewFile(uintptr(fd), name)
-	if _, err := file.Write(data); err != nil {
-		file.Close()
-		return nil, fmt.Errorf("write to memfd failed: %w", err)
-	}
-
-	if _, err := file.Seek(0, 0); err != nil {
-		file.Close()
-		return nil, fmt.Errorf("seek memfd failed: %w", err)
-	}
-
-	return file, nil
-}
-
 func main() {
 	listFlag := flag.Bool("l", false, "List embedded epigraph images")
 	nameFlag := flag.String("n", "", "Specify epigraph image name")
+	monitorFlag := flag.String("m", "", "Specify monitor name (leave empty for all)")
 	flag.Parse()
 
 	entries, err := fs.Glob(embeddedImages, "images/*.png")
@@ -81,29 +60,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	memFile, err := createMemFile("epigraph.png", data)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "[-] Memory mapping failed: %v\n", err)
-		os.Exit(1)
-	}
-	defer memFile.Close()
-
-	memPath := fmt.Sprintf("/proc/%d/fd/%d", os.Getpid(), memFile.Fd())
-	fmt.Printf("[*] Injecting %s via RAM (%s)\n", filepath.Base(selected), memPath)
-
-	preload := exec.Command("hyprctl", "hyprpaper", "preload", memPath)
-	if out, err := preload.CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, "[-] hyprpaper preload failed: %s (%v)\n", string(out), err)
-		os.Exit(1)
+	// XDG_RUNTIME_DIR (RAM 上の tmpfs) に一時展開
+	runtimeDir := os.Getenv("XDG_RUNTIME_DIR")
+	if runtimeDir == "" {
+		runtimeDir = "/tmp"
 	}
 
-	wall := exec.Command("hyprctl", "hyprpaper", "wallpaper", fmt.Sprintf(",%s", memPath))
+	tmpFile := filepath.Join(runtimeDir, fmt.Sprintf("epigraph-%d.png", os.Getpid()))
+	if err := os.WriteFile(tmpFile, data, 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "[-] Failed to write to tmpfs: %v\n", err)
+		os.Exit(1)
+	}
+	// 適用後に RAM から即時消去
+	defer os.Remove(tmpFile)
+
+	fmt.Printf("[*] Injecting %s via RAM tmpfs (%s)\n", filepath.Base(selected), tmpFile)
+
+	// 新構文: hyprctl hyprpaper wallpaper "<monitor>,<path>"
+	wallArg := fmt.Sprintf("%s,%s", *monitorFlag, tmpFile)
+	wall := exec.Command("hyprctl", "hyprpaper", "wallpaper", wallArg)
 	if out, err := wall.CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, "[-] hyprpaper wallpaper failed: %s (%v)\n", string(out), err)
 		os.Exit(1)
 	}
 
-	// hyprpaper の非同期ロード完了を待機
-	time.Sleep(1 * time.Second)
+	// hyprpaper の GPU テクスチャロード完了を待機
+	time.Sleep(500 * time.Millisecond)
 	fmt.Println("[+] Wallpaper applied seamlessly from RAM.")
 }
