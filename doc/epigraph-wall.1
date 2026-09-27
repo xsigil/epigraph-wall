@@ -1,0 +1,34 @@
+.TH EPIGRAPH-WALL 1 "September 2026" "Version 1.0.0" "User Commands"
+.SH NAME
+epigraph-wall \- stealth in-memory wallpaper injector for Hyprland
+.SH SYNOPSIS
+.B epigraph-wall
+[\fB\-l\fR] [\fB\-n\fR \fIname\fR]
+.SH DESCRIPTION
+.B epigraph-wall
+injects high-resolution, LaTeX-typeset epigraph wallpapers directly into
+Hyprland (\fBhyprpaper\fR) from RAM without touching physical storage.
+Images are pre-compiled into the binary using Go embedding and exposed via
+the Linux \fBmemfd_create\fR(2) system call.
+.SH OPTIONS
+.TP
+.B \-l
+List all embedded epigraph image names.
+.TP
+.BI \-n \ name
+Specify the image name to apply (e.g. \fI01_sovereignty.png\fR). Defaults to a random selection.
+.SH EXAMPLES
+Apply a random embedded epigraph:
+.IP
+.nf
+epigraph-wall
+.fi
+.PP
+List and pick a specific wallpaper:
+.IP
+.nf
+epigraph-wall -l
+epigraph-wall -n 01_sovereignty.png
+.fi
+.SH AUTHOR
+Crafted for sovereign POSIX environments.
