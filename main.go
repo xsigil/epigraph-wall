@@ -9,26 +9,21 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
 	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 //go:embed images/*.png
 var embeddedImages embed.FS
 
-// Linux memfd_create システムコール番号 (x86_64: 319)
-const (
-	SYS_MEMFD_CREATE = 319
-	MFD_CLOEXEC      = 0x0001
-)
-
 func createMemFile(name string, data []byte) (*os.File, error) {
-	fd, _, errno := syscall.RawSyscall(SYS_MEMFD_CREATE, uintptr(syscall.StringBytePtr(name)), uintptr(MFD_CLOEXEC), 0)
-	if errno != 0 {
-		return nil, fmt.Errorf("memfd_create failed: %v", errno)
+	fd, err := unix.MemfdCreate(name, unix.MFD_CLOEXEC)
+	if err != nil {
+		return nil, fmt.Errorf("memfd_create failed: %w", err)
 	}
 
-	file := os.NewFile(fd, name)
+	file := os.NewFile(uintptr(fd), name)
 	if _, err := file.Write(data); err != nil {
 		file.Close()
 		return nil, fmt.Errorf("write to memfd failed: %w", err)

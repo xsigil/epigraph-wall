@@ -4,19 +4,17 @@ MANDIR = $(PREFIX)/share/man/man1
 
 BIN = epigraph-wall
 MAN = doc/epigraph-wall.1
+TEX_SRCS = $(wildcard tex/*.tex)
 
 .PHONY: all assets build install uninstall clean
 
 all: build
 
-assets:
-	@echo "==> Rendering LaTeX epigraphs into images/..."
-	./scripts/gen-assets.sh
+assets: $(TEX_SRCS)
+	@echo "==> Compiling LuaLaTeX epigraphs into images/..."
+	./scripts/build-assets.sh
 
-build:
-	@if [ -z "$$(ls -A images/*.png 2>/dev/null)" ]; then \
-		$(MAKE) assets; \
-	fi
+build: assets
 	@echo "==> Building static binary with embedded images..."
 	go build -ldflags="-s -w" -o $(BIN) main.go
 
